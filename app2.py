@@ -56,12 +56,16 @@ def crear_pdf(area, m2, dcm, dcpm, clas_nch, clas_oguc, resistencias, imagen_upl
     # --- INSERTAR IMAGEN ---
     if imagen_upload is not None:
         try:
-            # Guardamos la imagen temporalmente para que FPDF la pueda leer
+            # Aseguramos leer el archivo desde el inicio
+            imagen_upload.seek(0) 
+            
+            # Guardamos la imagen temporalmente
             with tempfile.NamedTemporaryFile(delete=False, suffix=".png") as tmp_file:
                 tmp_file.write(imagen_upload.read())
                 tmp_path = tmp_file.name
 
             # Agregamos la imagen centrada (ancho 100mm)
+            # x=55 centra aproximadamente en A4 (210mm ancho) -> (210-100)/2 = 55
             pdf.image(tmp_path, x=55, w=100)
             pdf.ln(5)
             
@@ -112,7 +116,9 @@ def crear_pdf(area, m2, dcm, dcpm, clas_nch, clas_oguc, resistencias, imagen_upl
     pdf.set_font("Arial", 'I', 8)
     pdf.cell(0, 10, clean_text("Informe generado automáticamente por la aplicación de Carga Combustible."), ln=True, align='C')
     
-    return pdf.output(dest='S').encode('latin-1')
+    # --- CORRECCIÓN FINAL ---
+    # fpdf2 devuelve bytearray con dest='S', lo convertimos a bytes y listo.
+    return bytes(pdf.output(dest='S'))
 
 # --- 1. INGRESO DE DATOS ---
 with st.container():
@@ -342,3 +348,4 @@ if m2 > 0:
 st.markdown("---")
 url = "https://www.minvu.gob.cl/wp-content/uploads/2025/02/Listado-Oficial-de-Comportamiento-al-Fuego-de-Elementos-y-Componentes-de-la-Construccion_-ED17-2025.pdf"
 st.link_button("Abrir Listado Oficial MINVU (PDF)", url)
+
