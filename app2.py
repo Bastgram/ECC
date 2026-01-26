@@ -1,5 +1,8 @@
 import streamlit as st
 import pandas as pd
+from fpdf import FPDF
+import tempfile
+import os
 
 # Configuración de la página
 st.set_page_config(page_title="Estudio de Carga Combustible", layout="wide")
@@ -7,7 +10,7 @@ st.set_page_config(page_title="Estudio de Carga Combustible", layout="wide")
 st.title("🔥 Estudio de Carga Combustible")
 st.markdown("Cálculo según NCh1916, NCh1993 y OGUC.")
 
-# --- DATOS Y DICCIONARIOS ---
+# --- DICCIONARIOS DE DATOS ---
 calor_comb = {
     "aceite comestible": 46, "aceite de alquitrán": 46, "aceite diesel": 46, "aceite pesado de petróleo": 42.7,
     "acetileno": 50.2, "acetona": 30.6, "acido acético": 16.8, "alcohol etílico": 29.7, 
@@ -19,10 +22,7 @@ calor_comb = {
     "parafina": 46, "petróleo": 41.9, "plástico (polietileno)": 46.5, 
     "poliestireno": 40.2, "polivinilo acetato": 20.9, "propano": 50.2, 
     "ropa / textiles": 16.8, "tabaco": 16.8
-    # He resumido la lista para no hacer el código gigante, 
-    # pero puedes pegar aquí tu diccionario completo original.
 }
-# Nota: Asegúrate de incluir tu diccionario COMPLETO aquí arriba.
 
 elementos_construccion = {
     1: "Muros cortafuego", 2: "Muros zona vertical de seguridad y caja de escalera",
@@ -39,7 +39,82 @@ tabla_resistencia = {
     'd': ["F-120", "F-60",  "F-60",  "F-60",  "F-30",  "-",    "-",    "F-30",  "F-15"]
 }
 
-# --- 1. INGRESO DE DATOS GENERALES ---
+# --- FUNCIONES AUXILIARES ---
+def clean_text(text):
+    return str(text).encode('latin-1', 'replace').decode('latin-1')
+
+def crear_pdf(area, m2, dcm, dcpm, clas_nch, clas_oguc, resistencias, imagen_upload):
+    pdf = FPDF()
+    pdf.add_page()
+    pdf.set_font("Arial", size=12)
+    
+    # Título
+    pdf.set_font("Arial", 'B', 16)
+    pdf.cell(0, 10, clean_text(f"Informe de Carga Combustible: {area}"), ln=True, align='C')
+    pdf.ln(5)
+    
+    # --- INSERTAR IMAGEN ---
+    if imagen_upload is not None:
+        try:
+            # Guardamos la imagen temporalmente para que FPDF la pueda leer
+            with tempfile.NamedTemporaryFile(delete=False, suffix=".png") as tmp_file:
+                tmp_file.write(imagen_upload.read())
+                tmp_path = tmp_file.name
+
+            # Agregamos la imagen centrada (ancho 100mm)
+            pdf.image(tmp_path, x=55, w=100)
+            pdf.ln(5)
+            
+            # Borramos el archivo temporal
+            os.remove(tmp_path)
+        except Exception as e:
+            pdf.set_font("Arial", 'I', 10)
+            pdf.cell(0, 10, clean_text(f"No se pudo cargar la imagen: {e}"), ln=True)
+
+    # Datos Generales
+    pdf.set_font("Arial", 'B', 12)
+    pdf.cell(0, 10, clean_text("1. Resumen de Resultados"), ln=True)
+    pdf.set_font("Arial", size=11)
+    
+    pdf.cell(0, 8, clean_text(f"Área Total Evaluada: {m2} m2"), ln=True)
+    pdf.cell(0, 8, clean_text(f"Densidad de Carga Media (Dcm): {dcm:.2f} MJ/m2"), ln=True)
+    pdf.cell(0, 8, clean_text(f"Densidad de Carga Puntual (Dcpm): {dcpm:.2f} MJ/m2"), ln=True)
+    pdf.cell(0, 8, clean_text(f"Clasificación NCh 1993: {clas_nch}"), ln=True)
+    pdf.ln(5)
+    
+    # Clasificación OGUC
+    pdf.set_font("Arial", 'B', 14)
+    pdf.set_fill_color(200, 220, 255)
+    pdf.cell(0, 10, clean_text(f"Clasificación OGUC: CLASE {clas_oguc}"), ln=True, fill=True, align='C')
+    pdf.ln(10)
+    
+    # Tabla de Resistencia
+    pdf.set_font("Arial", 'B', 12)
+    pdf.cell(0, 10, clean_text("2. Exigencias de Resistencia al Fuego"), ln=True)
+    
+    pdf.set_font("Arial", 'B', 10)
+    pdf.cell(10, 8, "#", 1)
+    pdf.cell(140, 8, clean_text("Elemento de Construcción"), 1)
+    pdf.cell(30, 8, "Resistencia", 1, ln=True)
+    
+    pdf.set_font("Arial", size=10)
+    if resistencias:
+        for i in range(1, 10):
+            nombre = elementos_construccion[i]
+            valor = resistencias[i-1]
+            pdf.cell(10, 8, str(i), 1)
+            pdf.cell(140, 8, clean_text(nombre), 1)
+            pdf.cell(30, 8, clean_text(valor), 1, ln=True)
+    else:
+        pdf.cell(0, 8, clean_text("No se encontraron datos de resistencia."), 1, ln=True)
+
+    pdf.ln(10)
+    pdf.set_font("Arial", 'I', 8)
+    pdf.cell(0, 10, clean_text("Informe generado automáticamente por la aplicación de Carga Combustible."), ln=True, align='C')
+    
+    return pdf.output(dest='S').encode('latin-1')
+
+# --- 1. INGRESO DE DATOS ---
 with st.container():
     st.header("1. Datos del Edificio")
     col1, col2 = st.columns(2)
@@ -67,9 +142,12 @@ with st.container():
         ancho = st.number_input("Ancho (m):", min_value=0.1)
         m2 = largo * ancho
         st.info(f"📏 Área Total: **{m2:.2f} m²**")
+        
+        # --- UPLOAD DE IMAGEN ---
+        st.markdown("**Imagen del Edificio / Plano (Opcional):**")
+        imagen_archivo = st.file_uploader("Subir imagen (JPG/PNG)", type=["png", "jpg", "jpeg"])
 
 # --- 2. GESTIÓN DE MATERIALES (SESSION STATE) ---
-# Inicializamos la memoria para guardar materiales si no existe
 if 'materiales_general' not in st.session_state:
     st.session_state.materiales_general = []
 if 'materiales_puntual' not in st.session_state:
@@ -85,7 +163,7 @@ def agregar_material(tipo_lista, material, cantidad):
         "Total MJ": total
     })
 
-# --- INTERFAZ DE CARGA DE MATERIALES ---
+# --- INTERFAZ DE CARGA ---
 st.markdown("---")
 st.header("2. Inventario de Materiales")
 
@@ -99,22 +177,17 @@ with tab1:
     with col_mat2:
         cant_gen = st.number_input("Cantidad (kg):", min_value=0.0, step=0.1, key="cant_gen")
     with col_mat3:
-        st.write("") # Espacio
-        st.write("") 
+        st.write("")
+        st.write("")
         if st.button("Agregar a General"):
             if cant_gen > 0:
                 agregar_material('materiales_general', sel_mat_gen, cant_gen)
                 st.success("Agregado")
-            else:
-                st.warning("Ingrese cantidad > 0")
 
-    # Tabla de materiales agregados
     if st.session_state.materiales_general:
         df_gen = pd.DataFrame(st.session_state.materiales_general)
         st.dataframe(df_gen, use_container_width=True)
         suma_total_gen = df_gen["Total MJ"].sum()
-        
-        # Botón para limpiar
         if st.button("Limpiar lista General"):
             st.session_state.materiales_general = []
             st.rerun()
@@ -137,14 +210,11 @@ with tab2:
             if cant_pun > 0:
                 agregar_material('materiales_puntual', sel_mat_pun, cant_pun)
                 st.success("Agregado")
-            else:
-                st.warning("Ingrese cantidad > 0")
 
     if st.session_state.materiales_puntual:
         df_pun = pd.DataFrame(st.session_state.materiales_puntual)
         st.dataframe(df_pun, use_container_width=True)
         suma_total_pun = df_pun["Total MJ"].sum()
-        
         if st.button("Limpiar lista Puntual"):
             st.session_state.materiales_puntual = []
             st.rerun()
@@ -157,10 +227,18 @@ with tab2:
 st.markdown("---")
 st.header("3. Resultados del Análisis")
 
+# Inicializamos variables
+Dcm = 0
+Dcpm = 0
+clas_media = "N/A"
+clas_puntual = "N/A"
+mas_restrictiva = "N/A"
+letra_resultado = "N/A"
+resistencias_finales = []
+
 if m2 > 0:
-    # Cálculos
     Dcm = suma_total_gen / m2
-    Dcpm = suma_total_pun / 4  # Área fija de 4m2
+    Dcpm = suma_total_pun / 4
 
     col_res1, col_res2 = st.columns(2)
     with col_res1:
@@ -168,7 +246,7 @@ if m2 > 0:
     with col_res2:
         st.metric(label="Densidad Puntual Máxima (Dcpm)", value=f"{Dcpm:.2f} MJ/m²")
 
-    # Funciones de clasificación
+    # Clasificación NCh
     def clasificar_media(valor):
         if valor <= 500: return "DC1"
         elif valor <= 1000: return "DC2"
@@ -190,20 +268,18 @@ if m2 > 0:
     clas_media = clasificar_media(Dcm)
     clas_puntual = clasificar_puntual(Dcpm)
 
-    # Prioridad (la más alta gana)
     prioridad = {"DC1": 1, "DC2": 2, "DC3": 3, "DC4": 4, "DC5": 5, "DC6": 6, "DC7": 7}
-    
-    # Manejo de error si la clave no existe (por si acaso)
     try:
-        val_media = prioridad[clas_media]
-        val_puntual = prioridad[clas_puntual]
-        mas_restrictiva = clas_media if val_media > val_puntual else clas_puntual
+        if prioridad[clas_media] > prioridad[clas_puntual]:
+            mas_restrictiva = clas_media
+        else:
+            mas_restrictiva = clas_puntual
     except:
         mas_restrictiva = "Error"
 
     st.subheader(f"Clasificación NCh 1993: **{mas_restrictiva}**")
     
-    # --- LOGICA TABLA NORMATIVA (OGUC) ---
+    # Clasificación OGUC
     tabla_normativa = {
         1: [(8000, 24000, "aaaaa"), (4000, 16000, "baaaa"), (2000, 10000, "cbaaa"), (-1, -1, "dcbaa")],
         2: [(16000, 32000, "aaaaa"), (8000, 24000, "baaaa"), (4000, 16000, "cbaaa"), (2000, 10000, "ccbaa"), (1000, 6000, "dccba"), (500, 3500, "ddccb"), (-1, -1, "dddcc")],
@@ -213,7 +289,6 @@ if m2 > 0:
 
     filas = tabla_normativa.get(destino, [])
     
-    # Lógica de cruce (igual a tu script)
     idx_media = len(filas) - 1
     for i, (lim_m, _, _) in enumerate(filas):
         if Dcm > lim_m:
@@ -227,41 +302,43 @@ if m2 > 0:
             break
             
     idx_final = min(idx_media, idx_puntual)
-    fila_datos = filas[idx_final]
-    letras_pisos = fila_datos[2]
-    
-    col_idx = int(cant_pisos) - 1
-    if col_idx < 0: col_idx = 0
-    if col_idx > 4: col_idx = 4
-    
-    letra_resultado = letras_pisos[col_idx].upper()
+    if filas:
+        letra_resultado = filas[idx_final][2][min(max(int(cant_pisos) - 1, 0), 4)].upper()
+    else:
+        letra_resultado = "N/A"
 
     st.success(f"## Clasificación OGUC: CLASE {letra_resultado}")
 
-    # --- TABLA DE RESISTENCIA AL FUEGO ---
+    # Tabla Resistencia
     st.markdown("### Requisitos de Resistencia al Fuego")
-    
     clave_letra = letra_resultado.lower()
     if clave_letra in tabla_resistencia:
-        resistencias = tabla_resistencia[clave_letra]
-        
+        resistencias_finales = tabla_resistencia[clave_letra]
         datos_tabla = []
         for i in range(1, 10):
             datos_tabla.append({
                 "Elemento": elementos_construccion[i],
-                "Resistencia Exigida": resistencias[i-1]
+                "Resistencia Exigida": resistencias_finales[i-1]
             })
-            
         st.table(pd.DataFrame(datos_tabla))
-    else:
-        st.error("No se encontró clasificación de resistencia.")
+    
+    # --- BOTÓN DE DESCARGA PDF ---
+    st.markdown("---")
+    if letra_resultado != "N/A":
+        # Llamamos a la función crear_pdf pasando también la imagen (si existe)
+        pdf_bytes = crear_pdf(
+            name_area, m2, Dcm, Dcpm, mas_restrictiva, letra_resultado, resistencias_finales, 
+            imagen_archivo # <--- Aquí pasamos la imagen subida
+        )
+        
+        st.download_button(
+            label="📄 Descargar Informe en PDF",
+            data=pdf_bytes,
+            file_name=f"Informe_{name_area}.pdf",
+            mime="application/pdf"
+        )
 
-else:
-    st.warning("Ingrese las dimensiones del área para ver resultados.")
-
-# --- LINK FINAL ---
+# Link externo
 st.markdown("---")
-st.write("Contraste los resultados con el Listado Oficial:")
 url = "https://www.minvu.gob.cl/wp-content/uploads/2025/02/Listado-Oficial-de-Comportamiento-al-Fuego-de-Elementos-y-Componentes-de-la-Construccion_-ED17-2025.pdf"
 st.link_button("Abrir Listado Oficial MINVU (PDF)", url)
-
