@@ -1,3 +1,4 @@
+import streamlit as st
 #Estudio de carga combustible
 # Datos del área
 name_area = st.text_input("Ingrese nombre de área a evaluar: ")
@@ -333,3 +334,4 @@ if ver_web == "si":
     webbrowser.open(url)
 
     print("Abriendo navegador...")
+
