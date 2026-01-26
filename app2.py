@@ -1,6 +1,6 @@
 #Estudio de carga combustible
 # Datos del área
-name_area = input("Ingrese nombre de área a evaluar: ")
+name_area = st.text_input("Ingrese nombre de área a evaluar: ")
 print("--------------------------------------------------------------------------------")
 print("Ingrese el número del destino del edificio:")
 print("1. Combustibles, lubricantes, aceites minerales y naturales")
@@ -331,4 +331,5 @@ if ver_web == "si":
     # Link real al listado Oficial de Comportamiento al Fuego de Elementos y Componentes de la Construcción
     url = "https://www.minvu.gob.cl/wp-content/uploads/2025/02/Listado-Oficial-de-Comportamiento-al-Fuego-de-Elementos-y-Componentes-de-la-Construccion_-ED17-2025.pdf"
     webbrowser.open(url)
+
     print("Abriendo navegador...")
